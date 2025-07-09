@@ -60,7 +60,7 @@ const LocationServiceContext = createContext<LocationServiceContextType | null>(
 
 const LOCATION_CACHE_KEY = "labify_user_location"
 const LOCATION_CACHE_DURATION = 10 * 60 * 1000 // 10 minutes
-const DEFAULT_TIMEOUT = 15000 // 15 seconds
+const DEFAULT_TIMEOUT = 30000 // 30 seconds
 
 export function LocationServiceProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<LocationServiceState>({
@@ -218,6 +218,37 @@ export function LocationServiceProvider({ children }: { children: React.ReactNod
     }
   }, [])
 
+  // Fallback: fetch coarse location from public IP
+  const fetchIpLocation = async (): Promise<LocationData | null> => {
+    try {
+      // You can swap this endpoint with any other free IP-geo service
+      const res = await fetch("https://ipapi.co/json/")
+      if (!res.ok) throw new Error("IP lookup failed")
+      const json = await res.json()
+      if (!json.latitude || !json.longitude) throw new Error("IP lookup missing coords")
+
+      const coordinates: LocationCoordinates = {
+        latitude: Number(json.latitude),
+        longitude: Number(json.longitude),
+        accuracy: 50000, // IP geo is coarse (~50 km)
+      }
+
+      const address = await reverseGeocode(coordinates.latitude, coordinates.longitude)
+
+      const locationData: LocationData = {
+        coordinates,
+        address: address || json.city || undefined,
+        timestamp: Date.now(),
+      }
+
+      cacheLocation(locationData)
+      return locationData
+    } catch (e) {
+      console.error("IP location fallback failed:", e)
+      return null
+    }
+  }
+
   const requestLocation = useCallback(
     async (options: LocationRequestOptions = {}): Promise<LocationData | null> => {
       if (!state.isSupported) {
@@ -317,13 +348,17 @@ export function LocationServiceProvider({ children }: { children: React.ReactNod
           permissionState: locationError.code === "PERMISSION_DENIED" ? "denied" : prev.permissionState,
         }))
 
-        // Fallback to IP-based location if enabled
+        // Fallback to IP-based location if enabled and user didn't deny permission
         if (fallbackToIP && locationError.code !== "PERMISSION_DENIED") {
-          try {
-            // In a real app, you'd use an IP geolocation service
-            console.log("Fallback to IP-based location would be implemented here")
-          } catch (ipError) {
-            console.error("IP location fallback failed:", ipError)
+          const ipLocation = await fetchIpLocation()
+          if (ipLocation) {
+            setState((prev) => ({
+              ...prev,
+              currentLocation: ipLocation,
+              error: null,
+              accuracy: getAccuracyLevel(ipLocation.coordinates.accuracy),
+            }))
+            return ipLocation
           }
         }
 
