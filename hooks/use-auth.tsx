@@ -10,6 +10,7 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error?: string; needsConfirmation?: boolean }>
+  signInWithGoogle: () => Promise<{ error?: string }>
   signUp: (email: string, password: string, name: string) => Promise<{ error?: string; needsConfirmation?: boolean }>
   signOut: () => Promise<void>
   resendConfirmation: (email: string) => Promise<{ error?: string; success?: boolean }>
@@ -55,9 +56,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       setUser(session?.user ?? null)
       setLoading(false)
+
+      // Handle Google sign-in success
+      if (event === "SIGNED_IN" && session?.user) {
+        // Create or update user profile
+        const { error: profileError } = await supabase.from("users").upsert(
+          [
+            {
+              id: session.user.id,
+              email: session.user.email,
+              name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || "User",
+              created_at: session.user.created_at,
+              updated_at: new Date().toISOString(),
+            },
+          ],
+          {
+            onConflict: "id",
+            ignoreDuplicates: false,
+          },
+        )
+
+        if (profileError) {
+          console.error("Profile creation/update error:", profileError)
+        }
+      }
     })
 
     return () => subscription.unsubscribe()
@@ -97,6 +122,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return {}
   }
 
+  const signInWithGoogle = async () => {
+    if (isDemoMode) {
+      // Demo mode - simulate Google sign-in
+      localStorage.setItem("demo-auth", "true")
+      setUser({
+        ...demoUser,
+        email: "demo.google@labify.com",
+        user_metadata: { name: "Google Demo User", full_name: "Google Demo User" },
+      })
+      return {}
+    }
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    })
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    return {}
+  }
+
   const signUp = async (email: string, password: string, name: string) => {
     if (isDemoMode) {
       // Demo mode - simulate successful signup
@@ -111,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       options: {
         data: {
           name: name,
+          full_name: name,
         },
       },
     })
@@ -127,6 +183,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: data.user.id,
             email,
             name,
+            created_at: data.user.created_at,
+            updated_at: new Date().toISOString(),
           },
         ],
         {
@@ -176,7 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, resendConfirmation }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signInWithGoogle, signUp, signOut, resendConfirmation }}>
       {children}
     </AuthContext.Provider>
   )
