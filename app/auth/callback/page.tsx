@@ -20,68 +20,206 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
+        // Handle both URL search params and hash params
         const code = searchParams.get("code")
         const error = searchParams.get("error")
         const errorDescription = searchParams.get("error_description")
 
-        if (error) {
-          setError(errorDescription || error)
+        // Parse hash parameters (for implicit flow)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get("access_token")
+        const refreshToken = hashParams.get("refresh_token")
+        const tokenType = hashParams.get("token_type")
+        const expiresIn = hashParams.get("expires_in")
+        const hashError = hashParams.get("error")
+        const hashErrorDescription = hashParams.get("error_description")
+
+        console.log("Auth callback debug:", {
+          searchParams: {
+            code,
+            error,
+            errorDescription,
+          },
+          hashParams: {
+            accessToken: accessToken ? `${accessToken.substring(0, 20)}...` : null,
+            refreshToken: refreshToken ? `${refreshToken.substring(0, 20)}...` : null,
+            tokenType,
+            expiresIn,
+            error: hashError,
+            errorDescription: hashErrorDescription,
+          },
+          fullUrl: window.location.href,
+          hash: window.location.hash,
+          search: window.location.search,
+        })
+
+        // Check for errors first
+        const authError = error || hashError
+        const authErrorDescription = errorDescription || hashErrorDescription
+
+        if (authError) {
+          console.error("OAuth error:", authError, authErrorDescription)
+          setError(authErrorDescription || authError)
           setLoading(false)
           return
         }
 
-        if (code) {
-          const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+        // Handle implicit flow (access token in hash)
+        if (accessToken && tokenType) {
+          console.log("Handling implicit flow with access token")
 
-          if (exchangeError) {
-            setError(exchangeError.message)
+          try {
+            // Set the session using the tokens from the hash
+            const { data, error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken || "",
+            })
+
+            if (sessionError) {
+              console.error("Session error:", sessionError)
+              setError(`Failed to establish session: ${sessionError.message}`)
+              setLoading(false)
+              return
+            }
+
+            if (data.user && data.session) {
+              console.log("User authenticated via implicit flow:", data.user.email)
+              await handleSuccessfulAuth(data.user, data.session)
+              return
+            } else {
+              setError("Authentication succeeded but no user data received")
+              setLoading(false)
+              return
+            }
+          } catch (implicitError) {
+            console.error("Implicit flow error:", implicitError)
+            setError("Failed to process authentication tokens")
+            setLoading(false)
+            return
+          }
+        }
+
+        // Handle authorization code flow
+        if (code) {
+          console.log("Handling authorization code flow")
+
+          try {
+            const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+
+            if (exchangeError) {
+              console.error("Code exchange error:", exchangeError)
+              setError(`Failed to exchange code: ${exchangeError.message}`)
+              setLoading(false)
+              return
+            }
+
+            if (data.user && data.session) {
+              console.log("User authenticated via code flow:", data.user.email)
+              await handleSuccessfulAuth(data.user, data.session)
+              return
+            } else {
+              setError("Code exchange succeeded but no user data received")
+              setLoading(false)
+              return
+            }
+          } catch (codeError) {
+            console.error("Code flow error:", codeError)
+            setError("Failed to process authorization code")
+            setLoading(false)
+            return
+          }
+        }
+
+        // Fallback: check for existing session
+        console.log("No code or token found, checking existing session...")
+        try {
+          const {
+            data: { session },
+            error: sessionError,
+          } = await supabase.auth.getSession()
+
+          if (sessionError) {
+            console.error("Session check error:", sessionError)
+            setError("Failed to retrieve session")
             setLoading(false)
             return
           }
 
-          if (data.user) {
-            // Create user profile via API route (bypasses RLS)
-            try {
-              const response = await fetch("/api/auth/create-profile", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${data.session.access_token}`,
-                },
-                body: JSON.stringify({
-                  id: data.user.id,
-                  email: data.user.email,
-                  name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || "User",
-                }),
-              })
-
-              if (!response.ok) {
-                console.error("Profile creation failed:", await response.text())
-              }
-            } catch (profileError) {
-              console.error("Profile creation error:", profileError)
-              // Don't fail the auth flow for profile creation errors
-            }
-
-            setSuccess(true)
-            toast({
-              title: "Welcome to Labify!",
-              description: "You have been successfully signed in with Google.",
-            })
-
-            // Redirect after a short delay
-            setTimeout(() => {
-              router.push("/")
-            }, 2000)
+          if (session?.user) {
+            console.log("Found existing session for:", session.user.email)
+            await handleSuccessfulAuth(session.user, session)
+            return
+          } else {
+            console.log("No existing session found")
+            setError("No authorization code or access token received. Please try signing in again.")
+            setLoading(false)
+            return
           }
-        } else {
-          setError("No authorization code received")
+        } catch (fallbackError) {
+          console.error("Fallback session check error:", fallbackError)
+          setError("Failed to verify authentication status")
+          setLoading(false)
+          return
         }
       } catch (error) {
         console.error("Auth callback error:", error)
         setError("An unexpected error occurred during authentication")
-      } finally {
         setLoading(false)
+      }
+    }
+
+    const handleSuccessfulAuth = async (user: any, session: any) => {
+      try {
+        console.log("Creating user profile for:", user.email)
+
+        // Create user profile via API route (bypasses RLS)
+        const response = await fetch("/api/auth/create-profile", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            id: user.id,
+            email: user.email,
+            name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "User",
+          }),
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error("Profile creation failed:", errorText)
+          // Don't fail the auth flow for profile creation errors
+        } else {
+          console.log("Profile created successfully")
+        }
+
+        setSuccess(true)
+        toast({
+          title: "Welcome to Labify!",
+          description: "You have been successfully signed in with Google.",
+        })
+
+        // Clear the URL hash to prevent issues on refresh
+        if (window.location.hash) {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search)
+        }
+
+        // Redirect after a short delay
+        setTimeout(() => {
+          router.push("/")
+        }, 2000)
+      } catch (profileError) {
+        console.error("Profile creation error:", profileError)
+        // Still consider auth successful even if profile creation fails
+        setSuccess(true)
+        toast({
+          title: "Welcome to Labify!",
+          description: "You have been successfully signed in.",
+        })
+        setTimeout(() => {
+          router.push("/")
+        }, 2000)
       }
     }
 

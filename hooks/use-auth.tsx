@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { createContext, useContext, useEffect, useState } from "react"
 import type { User } from "@supabase/supabase-js"
 import { supabase, isDemoMode } from "@/lib/supabase"
@@ -57,12 +56,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth state change:", event, session?.user?.email)
       setUser(session?.user ?? null)
       setLoading(false)
 
       // Handle successful sign-in (including Google OAuth)
       if (event === "SIGNED_IN" && session?.user) {
         try {
+          console.log("Creating user profile for:", session.user.email)
           // Use API route to create user profile (bypasses RLS)
           const response = await fetch("/api/auth/create-profile", {
             method: "POST",
@@ -73,12 +74,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             body: JSON.stringify({
               id: session.user.id,
               email: session.user.email,
-              name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || "User",
+              name:
+                session.user.user_metadata?.full_name ||
+                session.user.user_metadata?.name ||
+                session.user.email?.split("@")[0] ||
+                "User",
             }),
           })
 
           if (!response.ok) {
-            console.error("Profile creation failed:", await response.text())
+            const errorText = await response.text()
+            console.error("Profile creation failed:", errorText)
+          } else {
+            console.log("Profile created successfully")
           }
         } catch (error) {
           console.error("Profile creation error:", error)
@@ -135,22 +143,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return {}
     }
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        queryParams: {
-          access_type: "offline",
-          prompt: "consent",
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
-      },
-    })
+      })
 
-    if (error) {
-      return { error: error.message }
+      if (error) {
+        console.error("Google OAuth error:", error)
+        return { error: error.message }
+      }
+
+      return {}
+    } catch (error) {
+      console.error("Google sign-in error:", error)
+      return { error: "Failed to initiate Google sign-in" }
     }
-
-    return {}
   }
 
   const signUp = async (email: string, password: string, name: string) => {

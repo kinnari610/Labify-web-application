@@ -13,7 +13,10 @@ export async function POST(request: NextRequest) {
   try {
     const { id, email, name } = await request.json()
 
+    console.log("Creating profile for:", { id, email, name })
+
     if (!id || !email || !name) {
+      console.error("Missing required fields:", { id: !!id, email: !!email, name: !!name })
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
@@ -36,9 +39,10 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("Profile creation error:", error)
-      return NextResponse.json({ error: "Failed to create user profile" }, { status: 500 })
+      return NextResponse.json({ error: "Failed to create user profile", details: error.message }, { status: 500 })
     }
 
+    console.log("Profile created successfully:", data)
     return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error("API error:", error)
