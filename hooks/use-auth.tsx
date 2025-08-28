@@ -60,27 +60,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null)
       setLoading(false)
 
-      // Handle Google sign-in success
+      // Handle successful sign-in (including Google OAuth)
       if (event === "SIGNED_IN" && session?.user) {
-        // Create or update user profile
-        const { error: profileError } = await supabase.from("users").upsert(
-          [
-            {
+        try {
+          // Use API route to create user profile (bypasses RLS)
+          const response = await fetch("/api/auth/create-profile", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
               id: session.user.id,
               email: session.user.email,
               name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || "User",
-              created_at: session.user.created_at,
-              updated_at: new Date().toISOString(),
-            },
-          ],
-          {
-            onConflict: "id",
-            ignoreDuplicates: false,
-          },
-        )
+            }),
+          })
 
-        if (profileError) {
-          console.error("Profile creation/update error:", profileError)
+          if (!response.ok) {
+            console.error("Profile creation failed:", await response.text())
+          }
+        } catch (error) {
+          console.error("Profile creation error:", error)
         }
       }
     })
@@ -175,28 +176,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: error.message }
     }
 
-    // Create user profile
-    if (data.user) {
-      const { error: profileError } = await supabase.from("users").upsert(
-        [
-          {
-            id: data.user.id,
-            email,
-            name,
-            created_at: data.user.created_at,
-            updated_at: new Date().toISOString(),
-          },
-        ],
-        {
-          onConflict: "id",
-          ignoreDuplicates: true,
-        },
-      )
-
-      if (profileError) {
-        console.error("Profile creation error:", profileError)
-      }
-    }
+    // Don't create profile here - let the auth state change handler do it
+    // This avoids RLS issues during signup
 
     // Check if email confirmation is needed
     if (data.user && !data.session) {

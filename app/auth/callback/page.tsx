@@ -1,16 +1,18 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
-import { Card, CardContent } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Loader2, CheckCircle, XCircle } from "lucide-react"
-import Image from "next/image"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Loader2, CheckCircle, AlertCircle } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { useToast } from "@/hooks/use-toast"
 
 export default function AuthCallbackPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -18,130 +20,154 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
-        // Get the current URL and extract the hash fragment
-        const hashFragment = window.location.hash.substring(1)
-        const params = new URLSearchParams(hashFragment)
+        const code = searchParams.get("code")
+        const error = searchParams.get("error")
+        const errorDescription = searchParams.get("error_description")
 
-        // Check for error in URL params
-        const errorParam = params.get("error")
-        const errorDescription = params.get("error_description")
-
-        if (errorParam) {
-          setError(errorDescription || errorParam)
+        if (error) {
+          setError(errorDescription || error)
           setLoading(false)
           return
         }
 
-        // Handle the auth callback
-        const { data, error: authError } = await supabase.auth.getSession()
+        if (code) {
+          const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
-        if (authError) {
-          console.error("Auth callback error:", authError)
-          setError(authError.message)
-          setLoading(false)
-          return
-        }
+          if (exchangeError) {
+            setError(exchangeError.message)
+            setLoading(false)
+            return
+          }
 
-        if (data.session?.user) {
-          setSuccess(true)
-          setLoading(false)
+          if (data.user) {
+            // Create user profile via API route (bypasses RLS)
+            try {
+              const response = await fetch("/api/auth/create-profile", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${data.session.access_token}`,
+                },
+                body: JSON.stringify({
+                  id: data.user.id,
+                  email: data.user.email,
+                  name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || "User",
+                }),
+              })
 
-          // Redirect to home page after a short delay
-          setTimeout(() => {
-            router.push("/")
-          }, 2000)
+              if (!response.ok) {
+                console.error("Profile creation failed:", await response.text())
+              }
+            } catch (profileError) {
+              console.error("Profile creation error:", profileError)
+              // Don't fail the auth flow for profile creation errors
+            }
+
+            setSuccess(true)
+            toast({
+              title: "Welcome to Labify!",
+              description: "You have been successfully signed in with Google.",
+            })
+
+            // Redirect after a short delay
+            setTimeout(() => {
+              router.push("/")
+            }, 2000)
+          }
         } else {
-          setError("No session found. Please try signing in again.")
-          setLoading(false)
+          setError("No authorization code received")
         }
-      } catch (err) {
-        console.error("Callback handling error:", err)
-        setError("An unexpected error occurred. Please try again.")
+      } catch (error) {
+        console.error("Auth callback error:", error)
+        setError("An unexpected error occurred during authentication")
+      } finally {
         setLoading(false)
       }
     }
 
     handleAuthCallback()
-  }, [router])
+  }, [searchParams, router, toast])
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md backdrop-blur-sm bg-white/80 border-0 shadow-2xl">
-        <CardContent className="p-8">
-          {/* Logo */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="relative">
-                <Image
-                  src="/placeholder-logo.png"
-                  alt="Labify Logo"
-                  width={48}
-                  height={48}
-                  className="rounded-2xl shadow-lg"
-                />
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full animate-pulse"></div>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold">L</span>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-teal-600 bg-clip-text text-transparent">
-                  Labify
-                </h1>
-                <p className="text-sm text-gray-500 -mt-1">Health at your fingertips</p>
-              </div>
+              <span className="text-2xl font-bold text-blue-600">Labify</span>
             </div>
-          </div>
+            <CardTitle>Completing Sign In</CardTitle>
+            <CardDescription>Please wait while we set up your account...</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center space-y-4">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            <p className="text-sm text-gray-600">Authenticating with Google...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
-          {loading && (
-            <div className="text-center space-y-4">
-              <div className="flex justify-center">
-                <Loader2 className="w-12 h-12 animate-spin text-blue-500" />
+  if (success) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold">L</span>
               </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">Completing Sign-In</h2>
-                <p className="text-gray-600">Please wait while we set up your account...</p>
-              </div>
+              <span className="text-2xl font-bold text-blue-600">Labify</span>
             </div>
-          )}
-
-          {success && (
-            <div className="text-center space-y-4">
-              <div className="flex justify-center">
-                <CheckCircle className="w-12 h-12 text-green-500" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">Welcome to Labify!</h2>
-                <p className="text-gray-600">Sign-in successful. Redirecting to your dashboard...</p>
-              </div>
+            <CardTitle className="text-green-600">Welcome to Labify!</CardTitle>
+            <CardDescription>You have been successfully signed in</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center space-y-4">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+              <CheckCircle className="w-8 h-8 text-green-600" />
             </div>
-          )}
+            <p className="text-sm text-gray-600 text-center">Redirecting you to the dashboard...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
-          {error && (
-            <div className="space-y-4">
-              <div className="text-center">
-                <div className="flex justify-center mb-4">
-                  <XCircle className="w-12 h-12 text-red-500" />
-                </div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">Sign-In Failed</h2>
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-orange-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold">L</span>
               </div>
-
-              <Alert className="border-red-200 bg-red-50">
-                <AlertDescription className="text-red-700">{error}</AlertDescription>
-              </Alert>
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => router.push("/auth/login")}
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold rounded-xl"
-                >
-                  Try Again
-                </Button>
-                <Button onClick={() => router.push("/")} variant="outline" className="flex-1 rounded-xl">
-                  Go Home
-                </Button>
-              </div>
+              <span className="text-2xl font-bold text-blue-600">Labify</span>
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  )
+            <CardTitle className="text-red-600">Authentication Failed</CardTitle>
+            <CardDescription>There was an issue signing you in</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+            <div className="space-y-2">
+              <Button onClick={() => router.push("/auth/login")} className="w-full">
+                Try Again
+              </Button>
+              <Button onClick={() => router.push("/")} variant="outline" className="w-full">
+                Back to Home
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  return null
 }

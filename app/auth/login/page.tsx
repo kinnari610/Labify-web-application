@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,9 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/hooks/use-auth"
-import { Eye, EyeOff, Mail, Lock, Loader2 } from "lucide-react"
-import Link from "next/link"
-import Image from "next/image"
+import { useToast } from "@/hooks/use-toast"
+import { Eye, EyeOff, Mail, Lock, Loader2, AlertCircle } from "lucide-react"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -23,103 +23,137 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState("")
   const [needsConfirmation, setNeedsConfirmation] = useState(false)
-  const [confirmationEmail, setConfirmationEmail] = useState("")
-  const [resendLoading, setResendLoading] = useState(false)
-  const [resendSuccess, setResendSuccess] = useState(false)
 
   const { signIn, signInWithGoogle, resendConfirmation } = useAuth()
+  const { toast } = useToast()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError("")
+    setNeedsConfirmation(false)
 
-    const result = await signIn(email, password)
+    try {
+      const { error, needsConfirmation: confirmationNeeded } = await signIn(email, password)
 
-    if (result.error) {
-      setError(result.error)
-      if (result.needsConfirmation) {
-        setNeedsConfirmation(true)
-        setConfirmationEmail(email)
+      if (error) {
+        setError(error)
+        if (confirmationNeeded) {
+          setNeedsConfirmation(true)
+        }
+        toast({
+          title: "Sign In Failed",
+          description: error,
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Welcome back!",
+          description: "You have been successfully signed in.",
+        })
+        router.push("/")
       }
-    } else {
-      router.push("/")
+    } catch (error) {
+      const errorMessage = "An unexpected error occurred. Please try again."
+      setError(errorMessage)
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true)
     setError("")
 
-    const result = await signInWithGoogle()
+    try {
+      const { error } = await signInWithGoogle()
 
-    if (result.error) {
-      setError(result.error)
+      if (error) {
+        setError(error)
+        toast({
+          title: "Google Sign-In Failed",
+          description: error,
+          variant: "destructive",
+        })
+        setGoogleLoading(false)
+      } else {
+        toast({
+          title: "Welcome back!",
+          description: "You have been successfully signed in with Google.",
+        })
+        // Note: For OAuth, the redirect happens automatically
+      }
+    } catch (error) {
+      const errorMessage = "An unexpected error occurred during Google sign-in."
+      setError(errorMessage)
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
       setGoogleLoading(false)
     }
-    // Note: For OAuth, the redirect happens automatically, so we don't set loading to false here
   }
 
   const handleResendConfirmation = async () => {
-    setResendLoading(true)
-    setError("")
-
-    const result = await resendConfirmation(confirmationEmail)
-
-    if (result.error) {
-      setError(result.error)
-    } else if (result.success) {
-      setResendSuccess(true)
+    if (!email) {
+      toast({
+        title: "Email Required",
+        description: "Please enter your email address first.",
+        variant: "destructive",
+      })
+      return
     }
 
-    setResendLoading(false)
+    const { error, success } = await resendConfirmation(email)
+
+    if (error) {
+      toast({
+        title: "Failed to Resend",
+        description: error,
+        variant: "destructive",
+      })
+    } else if (success) {
+      toast({
+        title: "Email Sent",
+        description: "Confirmation email has been resent. Please check your inbox.",
+      })
+    }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="relative">
-              <Image
-                src="/placeholder-logo.png"
-                alt="Labify Logo"
-                width={48}
-                height={48}
-                className="rounded-2xl shadow-lg"
-              />
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full animate-pulse"></div>
+      <Card className="w-full max-w-md shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+        <CardHeader className="text-center">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold">L</span>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-teal-600 bg-clip-text text-transparent">
-                Labify
-              </h1>
-              <p className="text-sm text-gray-500 -mt-1">Health at your fingertips</p>
-            </div>
+            <span className="text-2xl font-bold text-blue-600">Labify</span>
           </div>
-        </div>
-
-        <Card className="backdrop-blur-sm bg-white/80 border-0 shadow-2xl">
-          <CardHeader className="text-center pb-4">
-            <CardTitle className="text-2xl font-bold text-gray-800">Welcome Back</CardTitle>
-            <CardDescription className="text-gray-600">Sign in to access your health dashboard</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Google Sign-In Button */}
-            <Button
-              onClick={handleGoogleSignIn}
-              disabled={googleLoading || loading}
-              className="w-full h-12 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 shadow-sm hover:shadow-md transition-all duration-300 rounded-xl"
-              variant="outline"
-            >
+          <CardTitle className="text-2xl font-bold text-gray-900">Welcome Back</CardTitle>
+          <CardDescription className="text-gray-600">Sign in to your Labify account</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Google Sign-In Button */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-12 bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300 transition-all duration-200"
+            onClick={handleGoogleSignIn}
+            disabled={googleLoading || loading}
+          >
+            <div className="flex items-center justify-center gap-3">
               {googleLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
-                <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -138,140 +172,128 @@ export default function LoginPage() {
                   />
                 </svg>
               )}
-              {googleLoading ? "Signing in with Google..." : "Continue with Google"}
-            </Button>
-
-            <div className="relative">
-              <Separator className="my-4" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="bg-white px-4 text-sm text-gray-500 font-medium">or continue with email</span>
-              </div>
+              <span className="text-gray-700 font-medium">
+                {googleLoading ? "Signing in..." : "Continue with Google"}
+              </span>
             </div>
+          </Button>
 
-            {error && (
-              <Alert className="border-red-200 bg-red-50">
-                <AlertDescription className="text-red-700">{error}</AlertDescription>
-              </Alert>
-            )}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <Separator className="w-full" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-gray-500">Or continue with email</span>
+            </div>
+          </div>
 
-            {needsConfirmation && (
-              <Alert className="border-blue-200 bg-blue-50">
-                <AlertDescription className="text-blue-700">
-                  <div className="space-y-2">
-                    <p>Please check your email and click the confirmation link.</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">Didn't receive the email?</span>
-                      <Button
-                        onClick={handleResendConfirmation}
-                        disabled={resendLoading || resendSuccess}
-                        size="sm"
-                        variant="outline"
-                        className="h-8 px-3 text-xs bg-transparent"
-                      >
-                        {resendLoading ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : resendSuccess ? (
-                          "Sent!"
-                        ) : (
-                          "Resend"
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
+          {/* Error Alert */}
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium text-gray-700">
-                  Email Address
-                </Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Enter your email"
-                    required
-                    disabled={loading || googleLoading}
-                    className="pl-10 h-12 rounded-xl border-gray-200 focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
-                  Password
-                </Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    required
-                    disabled={loading || googleLoading}
-                    className="pl-10 pr-10 h-12 rounded-xl border-gray-200 focus:border-blue-500 focus:ring-blue-500"
-                  />
+          {/* Email Confirmation Alert */}
+          {needsConfirmation && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <p>Please confirm your email address before signing in.</p>
                   <Button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={loading || googleLoading}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0 hover:bg-transparent"
+                    variant="link"
+                    className="p-0 h-auto text-blue-600 hover:text-blue-700"
+                    onClick={handleResendConfirmation}
                   >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4 text-gray-400" />
-                    ) : (
-                      <Eye className="w-4 h-4 text-gray-400" />
-                    )}
+                    Resend confirmation email
                   </Button>
                 </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-gray-700 font-medium">
+                Email
+              </Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    setError("")
+                  }}
+                  required
+                  disabled={loading || googleLoading}
+                  className="pl-10 h-12 border-2 border-gray-200 focus:border-blue-500 transition-colors"
+                />
               </div>
-
-              <Button
-                type="submit"
-                disabled={loading || googleLoading}
-                className="w-full h-12 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    Signing In...
-                  </>
-                ) : (
-                  "Sign In"
-                )}
-              </Button>
-            </form>
-
-            <div className="text-center pt-4">
-              <p className="text-sm text-gray-600">
-                Don't have an account?{" "}
-                <Link href="/auth/signup" className="font-semibold text-blue-600 hover:text-blue-700 transition-colors">
-                  Sign up
-                </Link>
-              </p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-gray-700 font-medium">
+                Password
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    setError("")
+                  }}
+                  required
+                  disabled={loading || googleLoading}
+                  className="pl-10 pr-10 h-12 border-2 border-gray-200 focus:border-blue-500 transition-colors"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={loading || googleLoading}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <Button
+              type="submit"
+              className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium transition-all duration-200"
+              disabled={loading || googleLoading}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Signing in...
+                </>
+              ) : (
+                "Sign In"
+              )}
+            </Button>
+          </form>
 
-        {/* Demo Credentials */}
-        <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-          <h3 className="text-sm font-semibold text-yellow-800 mb-2">Demo Credentials</h3>
-          <p className="text-xs text-yellow-700">
-            Email: demo@labify.com
-            <br />
-            Password: demo123
-          </p>
-        </div>
-      </div>
+          <div className="text-center">
+            <p className="text-sm text-gray-600">
+              {"Don't have an account? "}
+              <Link href="/auth/signup" className="text-blue-600 hover:text-blue-700 font-medium hover:underline">
+                Sign up
+              </Link>
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
