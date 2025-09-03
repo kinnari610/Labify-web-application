@@ -1,51 +1,73 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-// Use service role key to bypass RLS
-const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
+import { supabaseAdmin, isDemoMode } from "@/lib/supabase"
 
 export async function POST(request: NextRequest) {
   try {
-    const { id, email, name } = await request.json()
-
-    console.log("Creating profile for:", { id, email, name })
-
-    if (!id || !email || !name) {
-      console.error("Missing required fields:", { id: !!id, email: !!email, name: !!name })
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    if (isDemoMode) {
+      return NextResponse.json(
+        {
+          message: "Profile creation skipped in demo mode",
+        },
+        { status: 200 },
+      )
     }
 
-    // Create user profile using service role (bypasses RLS)
-    const { data, error } = await supabaseAdmin.from("users").upsert(
-      [
+    const body = await request.json()
+    const { id, email, full_name, avatar_url } = body
+
+    if (!id || !email) {
+      return NextResponse.json({ error: "User ID and email are required" }, { status: 400 })
+    }
+
+    // Check if profile already exists
+    const { data: existingProfile, error: fetchError } = await supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("id", id)
+      .single()
+
+    if (fetchError && fetchError.code !== "PGRST116") {
+      console.error("Error checking existing profile:", fetchError)
+      return NextResponse.json({ error: "Failed to check existing profile" }, { status: 500 })
+    }
+
+    if (existingProfile) {
+      return NextResponse.json(
         {
-          id,
-          email,
-          name,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          message: "Profile already exists",
         },
-      ],
-      {
-        onConflict: "id",
-        ignoreDuplicates: false,
-      },
-    )
+        { status: 200 },
+      )
+    }
+
+    // Create new profile
+    const { data, error } = await supabaseAdmin
+      .from("profiles")
+      .insert({
+        id,
+        email,
+        full_name,
+        avatar_url,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
 
     if (error) {
-      console.error("Profile creation error:", error)
-      return NextResponse.json({ error: "Failed to create user profile", details: error.message }, { status: 500 })
+      console.error("Error creating profile:", error)
+      return NextResponse.json({ error: "Failed to create profile" }, { status: 500 })
     }
 
-    console.log("Profile created successfully:", data)
-    return NextResponse.json({ success: true, data })
+    return NextResponse.json(
+      {
+        message: "Profile created successfully",
+        profile: data,
+      },
+      { status: 201 },
+    )
   } catch (error) {
-    console.error("API error:", error)
+    console.error("Profile creation error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

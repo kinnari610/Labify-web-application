@@ -13,22 +13,37 @@ import { CreditCard, Smartphone, Building, Shield } from "lucide-react"
 export default function PaymentPage() {
   const [paymentMethod, setPaymentMethod] = useState("card")
   const [loading, setLoading] = useState(false)
+  const totalAmount = 270 // INR, displayed to user
 
   const handlePayment = async () => {
     setLoading(true)
-
-    // TODO: Integrate with payment gateway (Razorpay, Stripe, etc.)
     try {
-      // Payment processing logic here
-      console.log("Processing payment with method:", paymentMethod)
+      // Create order server-side (amount in paise)
+      const res = await fetch("/api/payments/razorpay/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: totalAmount * 100, currency: "INR" }),
+      })
 
-      // Simulate payment processing
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Unable to initiate payment")
+      }
 
-      // Redirect to success page
+      const data: {
+        keyId: string
+        order: { id: string; amount: number; currency: string }
+        demo?: boolean
+      } = await res.json()
+
+      // In production, load Razorpay Checkout and open with data.keyId and data.order.id
+      // For now, simulate success to keep the UX flowing:
+      console.log("Order created:", data)
+      await new Promise((r) => setTimeout(r, 1000))
       window.location.href = "/payment/success"
     } catch (error) {
       console.error("Payment error:", error)
+      alert("Payment failed to start. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -41,7 +56,6 @@ export default function PaymentPage() {
         <div className="px-4 py-6 space-y-6">
           <h1 className="text-xl font-bold text-gray-900">Payment</h1>
 
-          {/* Order Summary */}
           <Card>
             <CardHeader>
               <CardTitle>Order Summary</CardTitle>
@@ -63,13 +77,12 @@ export default function PaymentPage() {
                 <hr />
                 <div className="flex justify-between font-semibold text-lg">
                   <span>Total Amount</span>
-                  <span>₹270</span>
+                  <span>₹{totalAmount}</span>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Payment Methods */}
           <Card>
             <CardHeader>
               <CardTitle>Select Payment Method</CardTitle>
@@ -101,7 +114,6 @@ export default function PaymentPage() {
             </CardContent>
           </Card>
 
-          {/* Payment Form */}
           {paymentMethod === "card" && (
             <Card>
               <CardHeader>
@@ -144,14 +156,13 @@ export default function PaymentPage() {
             </Card>
           )}
 
-          {/* Security Notice */}
           <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
             <Shield className="w-5 h-5 text-green-600" />
             <span className="text-sm text-green-800">Your payment information is secure and encrypted</span>
           </div>
 
           <Button onClick={handlePayment} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 h-12">
-            {loading ? "Processing Payment..." : `Pay ₹270`}
+            {loading ? "Processing Payment..." : `Pay ₹${totalAmount}`}
           </Button>
         </div>
       </main>

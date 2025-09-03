@@ -1,479 +1,283 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect, useCallback, useRef } from "react"
-import { createContext, useContext } from "react"
-
-interface LocationCoordinates {
-  latitude: number
-  longitude: number
-  accuracy?: number
-  altitude?: number | null
-  altitudeAccuracy?: number | null
-  heading?: number | null
-  speed?: number | null
-}
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react"
+import { useToast } from "@/hooks/use-toast"
 
 interface LocationData {
-  coordinates: LocationCoordinates
-  address?: string
-  city?: string
-  country?: string
-  timestamp: number
+  latitude: number
+  longitude: number
+  address: string
+  city: string
+  state: string
+  country: string
+  pincode: string
 }
 
-interface LocationError {
-  code: "PERMISSION_DENIED" | "POSITION_UNAVAILABLE" | "TIMEOUT" | "NOT_SUPPORTED" | "NETWORK_ERROR"
-  message: string
-  details?: string
-}
-
-interface LocationServiceState {
-  currentLocation: LocationData | null
+interface LocationServiceContextType {
+  location: LocationData | null
   isLoading: boolean
-  error: LocationError | null
-  permissionState: "prompt" | "granted" | "denied" | "unknown"
-  isSupported: boolean
-  accuracy: "high" | "medium" | "low" | null
-}
-
-interface LocationServiceActions {
-  requestLocation: (options?: LocationRequestOptions) => Promise<LocationData | null>
+  error: string | null
+  accuracy: number | null
+  permissionState: PermissionState | null
+  requestLocation: () => Promise<void>
   clearLocation: () => void
-  watchLocation: () => number | null
-  clearWatch: (watchId: number) => void
-  checkPermissions: () => Promise<PermissionState>
-  reverseGeocode: (lat: number, lng: number) => Promise<string | null>
+  hasLocationPermission: boolean
 }
 
-interface LocationRequestOptions {
-  enableHighAccuracy?: boolean
-  timeout?: number
-  maximumAge?: number
-  fallbackToIP?: boolean
-}
-
-type LocationServiceContextType = LocationServiceState & LocationServiceActions
-
-const LocationServiceContext = createContext<LocationServiceContextType | null>(null)
-
-const LOCATION_CACHE_KEY = "labify_user_location"
-const LOCATION_CACHE_DURATION = 10 * 60 * 1000 // 10 minutes
-const DEFAULT_TIMEOUT = 30000 // 30 seconds
+const LocationServiceContext = createContext<LocationServiceContextType | undefined>(undefined)
 
 export function LocationServiceProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<LocationServiceState>({
-    currentLocation: null,
-    isLoading: false,
-    error: null,
-    permissionState: "unknown",
-    isSupported: typeof navigator !== "undefined" && "geolocation" in navigator,
-    accuracy: null,
-  })
-
-  const watchIdRef = useRef<number | null>(null)
+  const [location, setLocation] = useState<LocationData | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [accuracy, setAccuracy] = useState<number | null>(null)
+  const [permissionState, setPermissionState] = useState<PermissionState | null>(null)
+  const [hasLocationPermission, setHasLocationPermission] = useState(false)
+  const { toast } = useToast()
   const abortControllerRef = useRef<AbortController | null>(null)
+  const isMountedRef = useRef(true)
 
-  // Load cached location on mount
+  // Check permission state on mount
   useEffect(() => {
-    loadCachedLocation()
-    checkInitialPermissions()
-  }, [])
+    if (typeof window !== "undefined" && "permissions" in navigator) {
+      navigator.permissions
+        .query({ name: "geolocation" })
+        .then((result) => {
+          if (isMountedRef.current) {
+            setPermissionState(result.state)
+            setHasLocationPermission(result.state === "granted")
 
-  const loadCachedLocation = useCallback(() => {
-    try {
-      const cached = localStorage.getItem(LOCATION_CACHE_KEY)
-      if (cached) {
-        const locationData: LocationData = JSON.parse(cached)
-        const now = Date.now()
-
-        // Check if cached location is still valid
-        if (now - locationData.timestamp < LOCATION_CACHE_DURATION) {
-          setState((prev) => ({
-            ...prev,
-            currentLocation: locationData,
-            accuracy: getAccuracyLevel(locationData.coordinates.accuracy),
-          }))
-        } else {
-          localStorage.removeItem(LOCATION_CACHE_KEY)
-        }
-      }
-    } catch (error) {
-      console.error("Error loading cached location:", error)
-      localStorage.removeItem(LOCATION_CACHE_KEY)
-    }
-  }, [])
-
-  const checkInitialPermissions = useCallback(async () => {
-    if (!state.isSupported) return
-
-    try {
-      if ("permissions" in navigator) {
-        const permission = await navigator.permissions.query({ name: "geolocation" })
-        setState((prev) => ({ ...prev, permissionState: permission.state }))
-
-        // Listen for permission changes
-        permission.addEventListener("change", () => {
-          setState((prev) => ({ ...prev, permissionState: permission.state }))
+            result.addEventListener("change", () => {
+              if (isMountedRef.current) {
+                setPermissionState(result.state)
+                setHasLocationPermission(result.state === "granted")
+              }
+            })
+          }
         })
-      }
-    } catch (error) {
-      console.error("Error checking permissions:", error)
-    }
-  }, [state.isSupported])
-
-  const getAccuracyLevel = (accuracy?: number): "high" | "medium" | "low" | null => {
-    if (!accuracy) return null
-    if (accuracy <= 10) return "high"
-    if (accuracy <= 100) return "medium"
-    return "low"
-  }
-
-  const createLocationError = (error: GeolocationPositionError | Error): LocationError => {
-    if (error instanceof GeolocationPositionError) {
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          return {
-            code: "PERMISSION_DENIED",
-            message: "Location access denied",
-            details: "Please enable location permissions in your browser settings to use location-based features.",
-          }
-        case error.POSITION_UNAVAILABLE:
-          return {
-            code: "POSITION_UNAVAILABLE",
-            message: "Location unavailable",
-            details: "Your location could not be determined. Please check your GPS settings and internet connection.",
-          }
-        case error.TIMEOUT:
-          return {
-            code: "TIMEOUT",
-            message: "Location request timed out",
-            details: "The location request took too long. Please try again or check your connection.",
-          }
-        default:
-          return {
-            code: "POSITION_UNAVAILABLE",
-            message: "Unknown location error",
-            details: error.message,
-          }
-      }
-    }
-    // Handle generic Error objects produced by our timeout / abort
-    if (error instanceof Error) {
-      if (error.message.includes("timed out")) {
-        return {
-          code: "TIMEOUT",
-          message: "Location request timed out",
-          details: "The location request took too long. Please try again or check your connection.",
-        }
-      }
-      if (error.message.includes("aborted")) {
-        return {
-          code: "NETWORK_ERROR",
-          message: "Location request was aborted",
-          details: error.message,
-        }
-      }
+        .catch(() => {
+          // Permissions API not supported, fallback to checking geolocation
+          setHasLocationPermission("geolocation" in navigator)
+        })
     }
 
-    return {
-      code: "NETWORK_ERROR",
-      message: "Network error",
-      details: error.message,
-    }
-  }
-
-  const reverseGeocode = useCallback(async (lat: number, lng: number): Promise<string | null> => {
+    // Load saved location from localStorage
     try {
-      // In a real app, you'd use Google Maps Geocoding API or similar
-      // For demo purposes, we'll use a simple city detection based on coordinates
-      const indianCities = [
-        { name: "Vadodara, Gujarat", lat: 22.3072, lng: 73.1812, radius: 0.5 },
-        { name: "Mumbai, Maharashtra", lat: 19.076, lng: 72.8777, radius: 0.5 },
-        { name: "Delhi, Delhi", lat: 28.6139, lng: 77.209, radius: 0.5 },
-        { name: "Bangalore, Karnataka", lat: 12.9716, lng: 77.5946, radius: 0.5 },
-        { name: "Chennai, Tamil Nadu", lat: 13.0827, lng: 80.2707, radius: 0.5 },
-      ]
-
-      for (const city of indianCities) {
-        const distance = Math.sqrt(Math.pow(lat - city.lat, 2) + Math.pow(lng - city.lng, 2))
-        if (distance < city.radius) {
-          return city.name
-        }
+      const savedLocation = localStorage.getItem("userLocation")
+      if (savedLocation && isMountedRef.current) {
+        setLocation(JSON.parse(savedLocation))
       }
-
-      return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`
     } catch (error) {
-      console.error("Reverse geocoding error:", error)
-      return null
+      console.warn("Failed to load saved location:", error)
+    }
+
+    return () => {
+      isMountedRef.current = false
     }
   }, [])
 
-  const cacheLocation = useCallback((locationData: LocationData) => {
+  const reverseGeocode = useCallback(async (lat: number, lng: number, signal: AbortSignal): Promise<LocationData> => {
     try {
-      localStorage.setItem(LOCATION_CACHE_KEY, JSON.stringify(locationData))
+      // Using BigDataCloud API for reverse geocoding (free tier available)
+      const response = await fetch(
+        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`,
+        { signal },
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch address")
+      }
+
+      const data = await response.json()
+
+      return {
+        latitude: lat,
+        longitude: lng,
+        address: data.locality || data.city || "Unknown location",
+        city: data.city || data.locality || "Unknown city",
+        state: data.principalSubdivision || "Unknown state",
+        country: data.countryName || "Unknown country",
+        pincode: data.postcode || "000000",
+      }
     } catch (error) {
-      console.error("Error caching location:", error)
+      if (error instanceof Error && error.name === "AbortError") {
+        throw error
+      }
+
+      // Fallback location data
+      return {
+        latitude: lat,
+        longitude: lng,
+        address: "Location detected",
+        city: "Unknown city",
+        state: "Unknown state",
+        country: "Unknown country",
+        pincode: "000000",
+      }
     }
   }, [])
 
-  // Fallback: fetch coarse location from public IP
-  const fetchIpLocation = async (): Promise<LocationData | null> => {
-    try {
-      // You can swap this endpoint with any other free IP-geo service
-      const res = await fetch("https://ipapi.co/json/")
-      if (!res.ok) throw new Error("IP lookup failed")
-      const json = await res.json()
-      if (!json.latitude || !json.longitude) throw new Error("IP lookup missing coords")
-
-      const coordinates: LocationCoordinates = {
-        latitude: Number(json.latitude),
-        longitude: Number(json.longitude),
-        accuracy: 50000, // IP geo is coarse (~50 km)
-      }
-
-      const address = await reverseGeocode(coordinates.latitude, coordinates.longitude)
-
-      const locationData: LocationData = {
-        coordinates,
-        address: address || json.city || undefined,
-        timestamp: Date.now(),
-      }
-
-      cacheLocation(locationData)
-      return locationData
-    } catch (e) {
-      console.error("IP location fallback failed:", e)
-      return null
+  const requestLocation = useCallback(async () => {
+    if (!("geolocation" in navigator)) {
+      const errorMsg = "Geolocation is not supported by this browser"
+      setError(errorMsg)
+      toast({
+        title: "Location Error",
+        description: errorMsg,
+        variant: "destructive",
+      })
+      return
     }
-  }
 
-  const requestLocation = useCallback(
-    async (options: LocationRequestOptions = {}): Promise<LocationData | null> => {
-      if (!state.isSupported) {
-        const error: LocationError = {
-          code: "NOT_SUPPORTED",
-          message: "Geolocation not supported",
-          details: "Your browser does not support location services.",
-        }
-        setState((prev) => ({ ...prev, error }))
-        return null
-      }
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
 
-      // Cancel any existing request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
-      }
-      abortControllerRef.current = new AbortController()
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
 
-      setState((prev) => ({ ...prev, isLoading: true, error: null }))
+    setIsLoading(true)
+    setError(null)
 
-      const {
-        enableHighAccuracy = true,
-        timeout = DEFAULT_TIMEOUT,
-        maximumAge = 60000, // 1 minute
-        fallbackToIP = false,
-      } = options
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error("Location request timed out"))
+        }, 15000)
 
-      try {
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            reject(new Error("Location request timed out"))
-          }, timeout)
-
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              clearTimeout(timeoutId)
-              resolve(position)
-            },
-            (error) => {
-              clearTimeout(timeoutId)
-              reject(error)
-            },
-            {
-              enableHighAccuracy,
-              timeout,
-              maximumAge,
-            },
-          )
-
-          // Handle abort
-          abortControllerRef.current?.signal.addEventListener("abort", () => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
             clearTimeout(timeoutId)
-            reject(new Error("Request aborted"))
-          })
-        })
+            resolve(pos)
+          },
+          (err) => {
+            clearTimeout(timeoutId)
+            reject(err)
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 300000, // 5 minutes
+          },
+        )
+      })
 
-        const coordinates: LocationCoordinates = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          altitude: position.coords.altitude,
-          altitudeAccuracy: position.coords.altitudeAccuracy,
-          heading: position.coords.heading,
-          speed: position.coords.speed,
-        }
+      if (signal.aborted) return
 
-        // Get address through reverse geocoding
-        const address = await reverseGeocode(coordinates.latitude, coordinates.longitude)
+      const { latitude, longitude, accuracy: posAccuracy } = position.coords
 
-        const locationData: LocationData = {
-          coordinates,
-          address: address || undefined,
-          timestamp: Date.now(),
-        }
-
-        // Cache the location
-        cacheLocation(locationData)
-
-        setState((prev) => ({
-          ...prev,
-          currentLocation: locationData,
-          isLoading: false,
-          error: null,
-          accuracy: getAccuracyLevel(coordinates.accuracy),
-          permissionState: "granted",
-        }))
-
-        return locationData
-      } catch (error) {
-        console.error("Location request error:", error)
-
-        const locationError = createLocationError(error as GeolocationPositionError)
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          error: locationError,
-          permissionState: locationError.code === "PERMISSION_DENIED" ? "denied" : prev.permissionState,
-        }))
-
-        // Fallback to IP-based location if enabled and user didn't deny permission
-        if (fallbackToIP && locationError.code !== "PERMISSION_DENIED") {
-          const ipLocation = await fetchIpLocation()
-          if (ipLocation) {
-            setState((prev) => ({
-              ...prev,
-              currentLocation: ipLocation,
-              error: null,
-              accuracy: getAccuracyLevel(ipLocation.coordinates.accuracy),
-            }))
-            return ipLocation
-          }
-        }
-
-        return null
+      if (isMountedRef.current) {
+        setAccuracy(posAccuracy)
       }
-    },
-    [state.isSupported, reverseGeocode, cacheLocation],
-  )
+
+      // Get address information
+      const locationData = await reverseGeocode(latitude, longitude, signal)
+
+      if (signal.aborted) return
+
+      if (isMountedRef.current) {
+        setLocation(locationData)
+        setError(null)
+
+        // Save to localStorage
+        try {
+          localStorage.setItem("userLocation", JSON.stringify(locationData))
+          localStorage.setItem("locationPermissionGranted", "true")
+        } catch (error) {
+          console.warn("Failed to save location to localStorage:", error)
+        }
+
+        toast({
+          title: "Location Updated",
+          description: `Location set to ${locationData.city}, ${locationData.state}`,
+        })
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        console.log("Location request was aborted")
+        return
+      }
+
+      let errorMessage = "Failed to get location"
+
+      if (error instanceof GeolocationPositionError) {
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = "Location access denied by user"
+            break
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = "Location information unavailable"
+            break
+          case error.TIMEOUT:
+            errorMessage = "Location request timed out"
+            break
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      if (isMountedRef.current) {
+        setError(errorMessage)
+        toast({
+          title: "Location Error",
+          description: errorMessage,
+          variant: "destructive",
+        })
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsLoading(false)
+      }
+    }
+  }, [reverseGeocode, toast])
 
   const clearLocation = useCallback(() => {
-    localStorage.removeItem(LOCATION_CACHE_KEY)
-    setState((prev) => ({
-      ...prev,
-      currentLocation: null,
-      error: null,
-      accuracy: null,
-    }))
-  }, [])
-
-  const watchLocation = useCallback((): number | null => {
-    if (!state.isSupported) return null
-
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const coordinates: LocationCoordinates = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          altitude: position.coords.altitude,
-          altitudeAccuracy: position.coords.altitudeAccuracy,
-          heading: position.coords.heading,
-          speed: position.coords.speed,
-        }
-
-        reverseGeocode(coordinates.latitude, coordinates.longitude).then((address) => {
-          const locationData: LocationData = {
-            coordinates,
-            address: address || undefined,
-            timestamp: Date.now(),
-          }
-
-          cacheLocation(locationData)
-          setState((prev) => ({
-            ...prev,
-            currentLocation: locationData,
-            accuracy: getAccuracyLevel(coordinates.accuracy),
-          }))
-        })
-      },
-      (error) => {
-        const locationError = createLocationError(error)
-        setState((prev) => ({ ...prev, error: locationError }))
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 30000,
-        maximumAge: 60000,
-      },
-    )
-
-    watchIdRef.current = watchId
-    return watchId
-  }, [state.isSupported, reverseGeocode, cacheLocation])
-
-  const clearWatch = useCallback((watchId: number) => {
-    navigator.geolocation.clearWatch(watchId)
-    if (watchIdRef.current === watchId) {
-      watchIdRef.current = null
-    }
-  }, [])
-
-  const checkPermissions = useCallback(async (): Promise<PermissionState> => {
-    if (!state.isSupported) return "denied"
+    setLocation(null)
+    setError(null)
+    setAccuracy(null)
 
     try {
-      if ("permissions" in navigator) {
-        const permission = await navigator.permissions.query({ name: "geolocation" })
-        setState((prev) => ({ ...prev, permissionState: permission.state }))
-        return permission.state
-      }
-      return "prompt"
+      localStorage.removeItem("userLocation")
+      localStorage.removeItem("locationPermissionGranted")
     } catch (error) {
-      console.error("Error checking permissions:", error)
-      return "prompt"
+      console.warn("Failed to clear location from localStorage:", error)
     }
-  }, [state.isSupported])
+
+    toast({
+      title: "Location Cleared",
+      description: "Location data has been removed",
+    })
+  }, [toast])
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (watchIdRef.current) {
-        navigator.geolocation.clearWatch(watchIdRef.current)
-      }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
+      isMountedRef.current = false
     }
   }, [])
 
-  const contextValue: LocationServiceContextType = {
-    ...state,
+  const value: LocationServiceContextType = {
+    location,
+    isLoading,
+    error,
+    accuracy,
+    permissionState,
     requestLocation,
     clearLocation,
-    watchLocation,
-    clearWatch,
-    checkPermissions,
-    reverseGeocode,
+    hasLocationPermission,
   }
 
-  return <LocationServiceContext.Provider value={contextValue}>{children}</LocationServiceContext.Provider>
+  return <LocationServiceContext.Provider value={value}>{children}</LocationServiceContext.Provider>
 }
 
 export function useLocationService() {
   const context = useContext(LocationServiceContext)
-  if (!context) {
+  if (context === undefined) {
     throw new Error("useLocationService must be used within a LocationServiceProvider")
   }
   return context

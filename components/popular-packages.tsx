@@ -1,6 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { TestTube, Star, Clock, Users, ShoppingCart } from "lucide-react"
@@ -57,10 +58,7 @@ export function PopularPackages({ packages, loading }: PopularPackagesProps) {
       tests_included: pkg.tests_included,
     }
 
-    // Get existing cart
     const existingCart = JSON.parse(localStorage.getItem("labify_cart") || "[]")
-
-    // Check if item already exists
     const existingItemIndex = existingCart.findIndex((item: any) => item.id === cartItem.id)
 
     if (existingItemIndex >= 0) {
@@ -77,16 +75,12 @@ export function PopularPackages({ packages, loading }: PopularPackagesProps) {
       })
     }
 
-    // Save to localStorage
     localStorage.setItem("labify_cart", JSON.stringify(existingCart))
-
-    // Reset loading state
-    setTimeout(() => setAddingToCart(null), 1000)
+    setTimeout(() => setAddingToCart(null), 900)
   }
 
-  const calculateDiscount = (original: number, current: number) => {
-    return Math.round(((original - current) / original) * 100)
-  }
+  const calculateDiscount = (original: number, current: number) =>
+    original > 0 ? Math.round(((original - current) / original) * 100) : 0
 
   if (loading) {
     return (
@@ -95,9 +89,9 @@ export function PopularPackages({ packages, loading }: PopularPackagesProps) {
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="bg-white rounded-3xl p-6 shadow-sm border animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-              <div className="h-3 bg-gray-200 rounded w-full mb-3"></div>
-              <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+              <div className="h-3 bg-gray-200 rounded w-full mb-3" />
+              <div className="h-6 bg-gray-200 rounded w-1/4" />
             </div>
           ))}
         </div>
@@ -115,17 +109,18 @@ export function PopularPackages({ packages, loading }: PopularPackagesProps) {
           <p className="text-sm text-gray-600">Most booked packages this month</p>
         </div>
         <Button
+          asChild
           variant="ghost"
           size="sm"
           className="text-blue-600 hover:text-blue-700 font-semibold bg-blue-50 hover:bg-blue-100 rounded-2xl px-4"
         >
-          View All
+          <Link href="/lab-tests">View All</Link>
         </Button>
       </div>
 
       <div className="space-y-4">
         {packages.map((pkg) => {
-          const discount = pkg.original_price ? calculateDiscount(pkg.original_price, pkg.price) : 0
+          const discount = calculateDiscount(pkg.original_price, pkg.price)
           const isAddingToCart = addingToCart === pkg.id
 
           return (
@@ -147,7 +142,6 @@ export function PopularPackages({ packages, loading }: PopularPackagesProps) {
                   </div>
                   <p className="text-sm text-gray-600 mb-3">{pkg.description}</p>
 
-                  {/* Mock additional info */}
                   <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
                     <div className="flex items-center gap-1">
                       <Star className="w-3 h-3 text-yellow-400 fill-current" />
