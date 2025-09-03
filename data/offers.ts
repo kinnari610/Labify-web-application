@@ -1,12 +1,13 @@
-import type { LucideIcon } from "lucide-react"
-import { Zap, Gift, Clock } from "lucide-react"
+// Centralized offers data shared by SpecialOffers and the /offers page
+
+import { type LucideIcon, Zap, Gift, Clock } from "lucide-react"
 
 export type Offer = {
   id: string
   title: string
   subtitle: string
   description: string
-  gradient: string
+  gradient: string // tailwind gradient classes without the 'bg-gradient-to-...' prefix
   icon: LucideIcon
   timeLeft: string
   originalPrice: number

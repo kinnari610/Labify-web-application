@@ -2,13 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Search, FlaskConical, Gift, User } from "lucide-react"
+import { Home, Search, TestTube, Gift, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const tabs = [
   { href: "/", label: "Home", icon: Home },
   { href: "/search", label: "Search", icon: Search },
-  { href: "/lab-tests", label: "Lab Tests", icon: FlaskConical },
+  { href: "/lab-tests", label: "Lab Tests", icon: TestTube },
   { href: "/offers", label: "Offers", icon: Gift },
   { href: "/profile", label: "Profile", icon: User },
 ] as const
