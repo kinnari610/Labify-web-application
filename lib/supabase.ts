@@ -1,51 +1,152 @@
-import { createClient } from "@supabase/supabase-js"
+/**
+ * Supabase client setup that never crashes at import time.
+ * - Validates env vars before creating a real client.
+ * - Provides a shape-compatible stub on the client when not configured.
+ * - Exports isDemoMode and supabaseAdmin (named exports) as required.
+ */
 
-// Environment variables with proper validation
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
-// Check if we have valid Supabase credentials
-const hasValidCredentials =
-  supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith("https://") && supabaseAnonKey.length > 20
+type AnyClient = SupabaseClient<any, "public", any>
+const isBrowser = typeof window !== "undefined"
 
-// Demo mode flag
-export const isDemoMode = !hasValidCredentials
-
-// Use valid fallback URLs for demo mode
-const validSupabaseUrl = hasValidCredentials ? supabaseUrl : "https://demo.supabase.co"
-const validSupabaseAnonKey = hasValidCredentials
-  ? supabaseAnonKey
-  : "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0"
-const validServiceRoleKey = hasValidCredentials
-  ? supabaseServiceRoleKey
-  : "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU"
-
-if (isDemoMode) {
-  console.warn("⚠️ Running in demo mode - Supabase environment variables not configured")
+function isValidUrl(url?: string | null): url is string {
+  if (!url || typeof url !== "string") return false
+  try {
+    new URL(url)
+    return true
+  } catch {
+    return false
+  }
 }
 
-// Re-export createClient for compatibility
+/**
+ * Shape-compatible Supabase stub to avoid "not a function" crashes when envs are missing.
+ */
+function createSupabaseStub(reason: string): AnyClient {
+  const stubAuth = {
+    async getSession() {
+      // Match Supabase v2 return shape
+      return { data: { session: null }, error: null } as any
+    },
+    onAuthStateChange(_cb: any) {
+      const subscription = { unsubscribe: () => void 0 }
+      return { data: { subscription }, error: null } as any
+    },
+    async signInWithPassword(_args: any) {
+      return { data: { session: null, user: null }, error: { message: `Supabase not configured: ${reason}` } } as any
+    },
+    async signUp(_args: any) {
+      return { data: { user: null }, error: { message: `Supabase not configured: ${reason}` } } as any
+    },
+    async signInWithOAuth(_args: any) {
+      return { data: { url: null }, error: { message: `Supabase not configured: ${reason}` } } as any
+    },
+    async signOut() {
+      return { error: null } as any
+    },
+    async resetPasswordForEmail(_email: string) {
+      return { data: {}, error: { message: `Supabase not configured: ${reason}` } } as any
+    },
+  }
+
+  const tableApi = {
+    select: async () => ({ data: null, error: new Error(`Supabase not configured: ${reason}`) }),
+    insert: async () => ({ data: null, error: new Error(`Supabase not configured: ${reason}`) }),
+    update: async () => ({ data: null, error: new Error(`Supabase not configured: ${reason}`) }),
+    delete: async () => ({ data: null, error: new Error(`Supabase not configured: ${reason}`) }),
+    eq: () => tableApi,
+    single: async () => ({ data: null, error: new Error(`Supabase not configured: ${reason}`) }),
+  }
+
+  const stub: any = {
+    __isStub: true,
+    auth: stubAuth,
+    from: (_table: string) => tableApi,
+  }
+
+  return stub as AnyClient
+}
+
+/**
+ * Demo mode is true when public envs are missing/invalid.
+ * Safe to evaluate on both client and server.
+ */
+const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const publicAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const hasClientCreds = isValidUrl(publicUrl) && typeof publicAnon === "string" && publicAnon.length > 20
+export const isDemoMode = !hasClientCreds
+
+function getSupabaseBrowser(): AnyClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (isValidUrl(url) && typeof anon === "string" && anon.length > 20) {
+    try {
+      return createClient(url, anon, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          storage: isBrowser ? window.localStorage : undefined,
+        },
+      }) as AnyClient
+    } catch (e) {
+      return createSupabaseStub(`createClient failed: ${(e as Error)?.message ?? "unknown error"}`)
+    }
+  }
+
+  return createSupabaseStub("missing or invalid NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY")
+}
+
+/**
+ * Server-side client creator. Prefer service role for secure operations.
+ */
+export function getSupabaseServer(): AnyClient {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const anon = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const key = serviceKey || anon
+
+  if (!isValidUrl(url) || !key) {
+    throw new Error(
+      "Supabase server client is not configured. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY).",
+    )
+  }
+
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  }) as AnyClient
+}
+
+/**
+ * Admin client (bypasses RLS) — SERVER ONLY.
+ * Returns a stub in the browser to avoid leaking secrets or crashing.
+ */
+export function supabaseAdmin(): AnyClient {
+  if (isBrowser) {
+    return createSupabaseStub("admin client is server-only")
+  }
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!isValidUrl(url) || !serviceKey) {
+    throw new Error("supabaseAdmin requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY")
+  }
+  return createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  }) as AnyClient
+}
+
+/**
+ * Default client for client components.
+ * In SSR it stays a stub; use getSupabaseServer()/supabaseAdmin() server-side.
+ */
+export const supabase: AnyClient = isBrowser ? getSupabaseBrowser() : createSupabaseStub("running on the server")
+export default supabase
+
+// Re-export for compatibility with any legacy imports.
 export { createClient }
 
-// Regular client for client-side operations
-export const supabase = createClient(validSupabaseUrl, validSupabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-  },
-})
-
-// Admin client for server-side operations (bypasses RLS)
-export const supabaseAdmin = createClient(validSupabaseUrl, validServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
-
-// Database types
+// Database types (kept for compatibility with the rest of the app)
 export interface Database {
   public: {
     Tables: {
