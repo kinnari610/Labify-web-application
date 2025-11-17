@@ -1,6 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
+import { Inter } from 'next/font/google'
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
@@ -10,6 +10,15 @@ import { CartProvider } from "@/hooks/use-cart"
 import { DemoBanner } from "@/components/demo-banner"
 
 const inter = Inter({ subsets: ["latin"] })
+
+const getMetadataBase = () => {
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
+    return appUrl ? new URL(appUrl) : new URL("http://localhost:3000")
+  } catch {
+    return undefined
+  }
+}
 
 export const metadata: Metadata = {
   title: "Labify - Lab Test Booking Platform",
@@ -23,7 +32,7 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
+  metadataBase: getMetadataBase(),
   openGraph: {
     title: "Labify - Lab Test Booking Platform",
     description: "Book lab tests online with ease. Find nearby labs, compare prices, and get reports digitally.",
