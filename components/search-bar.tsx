@@ -1,10 +1,11 @@
 "use client"
 
-import { Search, Mic, Camera, Filter } from "lucide-react"
+import { Search, Mic, Camera, Filter } from 'lucide-react'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useState } from "react"
+import { useRouter } from 'next/navigation'
 
 interface SearchBarProps {
   placeholder?: string
@@ -13,12 +14,25 @@ interface SearchBarProps {
 export function SearchBar({ placeholder = "Search..." }: SearchBarProps) {
   const [searchValue, setSearchValue] = useState("")
   const [isListening, setIsListening] = useState(false)
+  const router = useRouter()
 
   const popularSearches = ["Blood Test", "X-Ray", "MRI Scan", "Diabetes Check", "Heart Check"]
 
   const handleVoiceSearch = () => {
     setIsListening(!isListening)
     // Voice search logic would go here
+  }
+
+  const handleSearch = (query: string) => {
+    if (query.trim()) {
+      router.push(`/search?q=${encodeURIComponent(query)}`)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearch(searchValue)
+    }
   }
 
   return (
@@ -37,6 +51,7 @@ export function SearchBar({ placeholder = "Search..." }: SearchBarProps) {
               placeholder={placeholder}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
+              onKeyPress={handleKeyPress}
               className="flex-1 border-0 bg-transparent text-gray-800 placeholder:text-gray-500 focus-visible:ring-0 focus-visible:ring-offset-0 text-lg font-medium"
             />
 
@@ -83,7 +98,10 @@ export function SearchBar({ placeholder = "Search..." }: SearchBarProps) {
               key={index}
               variant="secondary"
               className="bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 text-gray-700 border border-white/50 rounded-2xl px-4 py-2 cursor-pointer transition-all duration-300 hover:shadow-md font-medium"
-              onClick={() => setSearchValue(search)}
+              onClick={() => {
+                setSearchValue(search)
+                handleSearch(search)
+              }}
             >
               {search}
             </Badge>

@@ -1,14 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Header } from "@/components/header"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { SearchBar } from "@/components/search-bar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { MapPin, TestTube, Building, Star, Phone } from "lucide-react"
+import { MapPin, TestTube, Building, Star, Phone, AlertCircle } from 'lucide-react'
 
 // Hardcoded Vadodara labs data from the PDF
 const vadodaraLabs = [
@@ -566,35 +567,37 @@ const testPackages = [
 export default function SearchPage() {
   const searchParams = useSearchParams()
   const query = searchParams.get("q") || ""
+  const router = useRouter()
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (query) {
+    if (query.trim()) {
       performSearch(query)
     }
   }, [query])
 
-  const performSearch = (searchQuery: string) => {
+  const performSearch = async (searchQuery: string) => {
     setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`)
+      const data = await response.json()
 
-    // Combine labs and packages for search
-    const allItems = [...vadodaraLabs, ...testPackages]
-
-    const results = allItems.filter((item) => {
-      const searchTerm = searchQuery.toLowerCase()
-      return (
-        item.name.toLowerCase().includes(searchTerm) ||
-        item.address?.toLowerCase().includes(searchTerm) ||
-        item.area?.toLowerCase().includes(searchTerm) ||
-        item.services?.some((service: string) => service.toLowerCase().includes(searchTerm)) ||
-        item.category?.toLowerCase().includes(searchTerm) ||
-        item.description?.toLowerCase().includes(searchTerm)
-      )
-    })
-
-    setSearchResults(results)
-    setLoading(false)
+      if (!response.ok) {
+        setError(data.error || "Failed to search")
+        setSearchResults([])
+      } else {
+        setSearchResults(data.results || [])
+      }
+    } catch (err) {
+      console.error("[v0] Search error:", err)
+      setError("Failed to perform search. Please try again.")
+      setSearchResults([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const getItemIcon = (type: string) => {
@@ -634,6 +637,14 @@ export default function SearchPage() {
     }
   }
 
+  const handleBooking = (item: any) => {
+    if (item.type === "package") {
+      router.push(`/booking?package=${item.id}`)
+    } else {
+      router.push(`/booking?lab=${item.id}`)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
@@ -648,6 +659,18 @@ export default function SearchPage() {
             <div className="text-sm text-gray-600">
               {loading ? "Searching..." : `Found ${searchResults.length} results for "${query}"`}
             </div>
+          )}
+
+          {error && (
+            <Card className="border-red-200 bg-red-50">
+              <CardContent className="p-4 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-red-900">Search Error</h3>
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {loading ? (
@@ -704,13 +727,13 @@ export default function SearchPage() {
                         {item.price && (
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-lg font-bold text-blue-600">₹{item.price}</span>
-                            {item.originalPrice && (
-                              <span className="text-sm text-gray-500 line-through">₹{item.originalPrice}</span>
+                            {item.original_price && (
+                              <span className="text-sm text-gray-500 line-through">₹{item.original_price}</span>
                             )}
                           </div>
                         )}
 
-                        {item.services && (
+                        {item.services && Array.isArray(item.services) && (
                           <div className="flex flex-wrap gap-1 mb-3">
                             {item.services.slice(0, 3).map((service: string, index: number) => (
                               <span key={index} className="px-2 py-1 bg-gray-100 text-xs rounded-full text-gray-700">
@@ -725,8 +748,27 @@ export default function SearchPage() {
                           </div>
                         )}
 
+                        {item.tests_included && Array.isArray(item.tests_included) && (
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {item.tests_included.slice(0, 3).map((test: string, index: number) => (
+                              <span key={index} className="px-2 py-1 bg-orange-100 text-xs rounded-full text-orange-700">
+                                {test}
+                              </span>
+                            ))}
+                            {item.tests_included.length > 3 && (
+                              <span className="px-2 py-1 bg-orange-100 text-xs rounded-full text-orange-700">
+                                +{item.tests_included.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         <div className="flex gap-2">
-                          <Button size="sm" className="flex-1">
+                          <Button
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => handleBooking(item)}
+                          >
                             {item.type === "package" ? "Book Test" : "Book Appointment"}
                           </Button>
                           <Button size="sm" variant="outline" className="bg-transparent">
@@ -753,7 +795,7 @@ export default function SearchPage() {
                 <TestTube className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <h3 className="font-semibold text-gray-900 mb-2">Start your search</h3>
                 <p className="text-gray-600 text-sm">
-                  Search for labs, tests, packages, or healthcare services in Vadodara
+                  Search for labs, tests, packages, or healthcare services in your area
                 </p>
               </CardContent>
             </Card>

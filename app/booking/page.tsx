@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Header } from "@/components/header"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Calendar, Clock, MapPin, Home } from "lucide-react"
+import { Calendar, Clock, MapPin, Home } from 'lucide-react'
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
@@ -19,6 +19,27 @@ interface TestPackage {
   name: string
   price: number
   description: string
+}
+
+const offersMapping: Record<string, TestPackage> = {
+  "pkg1": {
+    id: "pkg1",
+    name: "Complete Health Checkup",
+    price: 1999,
+    description: "Comprehensive health assessment including blood tests, urine analysis, and vital checks with 50+ parameters"
+  },
+  "pkg2": {
+    id: "pkg2",
+    name: "Diabetes Care Package",
+    price: 1299,
+    description: "Complete diabetes monitoring with HbA1c, fasting glucose, and comprehensive metabolic panel"
+  },
+  "pkg3": {
+    id: "pkg3",
+    name: "Heart Health Screening",
+    price: 1599,
+    description: "Complete cardiac assessment including lipid profile, ECG, and cardiac risk markers"
+  }
 }
 
 export default function BookingPage() {
@@ -43,7 +64,11 @@ export default function BookingPage() {
     }
 
     const packageId = searchParams.get("package")
-    if (packageId) {
+    const offerId = searchParams.get("offer")
+    
+    if (offerId && offersMapping[offerId]) {
+      setSelectedPackage(offersMapping[offerId])
+    } else if (packageId) {
       fetchPackage(packageId)
     }
   }, [user, searchParams, router])

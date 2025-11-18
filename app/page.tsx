@@ -1,7 +1,6 @@
 import { Header } from "@/components/header"
 import { LocationSelector } from "@/components/location-selector"
 import { LocationPrivacyNotice } from "@/components/location-privacy-notice"
-import { SearchBar } from "@/components/search-bar"
 import { ServiceCards } from "@/components/service-cards"
 import { SpecialOffers } from "@/components/special-offers"
 import { BestOffers } from "@/components/best-offers"
@@ -16,7 +15,6 @@ export default function HomePage() {
         <div className="px-4 py-6 space-y-6">
           <LocationPrivacyNotice />
           <LocationSelector />
-          <SearchBar placeholder="Search Labs, Tests, Packages..." />
           <ServiceCards />
           <NeedHelp />
           <SpecialOffers />

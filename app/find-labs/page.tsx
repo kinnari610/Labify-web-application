@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { MapComponent } from "@/components/map-component"
 import { LocationAccuracyIndicator } from "@/components/location-accuracy-indicator"
 import { useLocationService } from "@/hooks/use-location-service"
-import { Filter, MapPin, Phone, Clock, Star, Loader2, Navigation } from "lucide-react"
+import { Filter, MapPin, Phone, Clock, Star, Loader2, Navigation } from 'lucide-react'
 import { supabase, isDemoMode } from "@/lib/supabase"
 
 interface Lab {
@@ -29,33 +29,28 @@ export default function FindLabsPage() {
   const [labs, setLabs] = useState<Lab[]>([])
   const [loading, setLoading] = useState(true)
   const {
-    currentLocation,
+    location,
     isLoading: locationLoading,
     error: locationError,
     requestLocation,
-    watchLocation,
-    clearWatch,
   } = useLocationService()
 
   useEffect(() => {
     // Fetch labs when component mounts or location changes
-    if (currentLocation) {
+    if (location) {
       fetchNearbyLabs({
-        lat: currentLocation.coordinates.latitude,
-        lng: currentLocation.coordinates.longitude,
+        lat: location.latitude,
+        lng: location.longitude,
       })
     } else {
       fetchNearbyLabs()
     }
-  }, [currentLocation])
+  }, [location])
 
-  // Start watching location for real-time updates
+  // Request location on mount
   useEffect(() => {
-    const watchId = watchLocation()
-    return () => {
-      if (watchId) clearWatch(watchId)
-    }
-  }, [watchLocation, clearWatch])
+    requestLocation()
+  }, [requestLocation])
 
   const fetchNearbyLabs = async (location?: { lat: number; lng: number }) => {
     setLoading(true)
@@ -350,11 +345,7 @@ export default function FindLabsPage() {
   }
 
   const handleRequestLocation = () => {
-    requestLocation({
-      enableHighAccuracy: true,
-      timeout: 15000,
-      fallbackToIP: true,
-    })
+    requestLocation()
   }
 
   return (
@@ -386,7 +377,7 @@ export default function FindLabsPage() {
             </div>
           )}
 
-          {currentLocation && !locationLoading && (
+          {location && !locationLoading && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -405,8 +396,8 @@ export default function FindLabsPage() {
               <div className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-orange-600 mt-1" />
                 <div className="flex-1">
-                  <h3 className="font-semibold text-orange-900 mb-2">{locationError.message}</h3>
-                  <p className="text-orange-700 text-sm mb-4">{locationError.details}</p>
+                  <h3 className="font-semibold text-orange-900 mb-2">Unable to detect location</h3>
+                  <p className="text-orange-700 text-sm mb-4">Please enable location services to see labs sorted by distance.</p>
                   <Button
                     onClick={handleRequestLocation}
                     variant="outline"
@@ -422,10 +413,10 @@ export default function FindLabsPage() {
 
           <MapComponent
             userLocation={
-              currentLocation
+              location
                 ? {
-                    lat: currentLocation.coordinates.latitude,
-                    lng: currentLocation.coordinates.longitude,
+                    lat: location.latitude,
+                    lng: location.longitude,
                   }
                 : null
             }
@@ -434,7 +425,7 @@ export default function FindLabsPage() {
 
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-900">
-              Labs in Vadodara ({labs.length}) {currentLocation && "- Sorted by distance"}
+              Labs in Vadodara ({labs.length}) {location && "- Sorted by distance"}
             </h3>
 
             {loading ? (

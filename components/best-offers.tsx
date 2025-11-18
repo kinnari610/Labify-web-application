@@ -1,13 +1,15 @@
 "use client"
 
+import { useState } from "react"
+import { useRouter } from 'next/navigation'
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Star, Users, ArrowRight } from "lucide-react"
+import { Star, Users, ArrowRight } from 'lucide-react'
 
 const bestOffers = [
   {
-    id: 1,
+    id: "pkg1",
     title: "Complete Health Checkup",
     subtitle: "Most Popular Package",
     tests: ["Blood Sugar", "Cholesterol", "Liver Function", "Kidney Function", "+8 more"],
@@ -21,7 +23,7 @@ const bestOffers = [
     popular: true,
   },
   {
-    id: 2,
+    id: "pkg2",
     title: "Diabetes Care Package",
     subtitle: "Early Detection",
     tests: ["HbA1c", "Fasting Glucose", "Post Meal Glucose", "Insulin", "+4 more"],
@@ -34,7 +36,7 @@ const bestOffers = [
     bgGradient: "from-green-50 to-teal-50",
   },
   {
-    id: 3,
+    id: "pkg3",
     title: "Heart Health Screening",
     subtitle: "Cardiac Wellness",
     tests: ["ECG", "Lipid Profile", "Troponin", "CRP", "+6 more"],
@@ -49,6 +51,16 @@ const bestOffers = [
 ]
 
 export function BestOffers() {
+  const router = useRouter()
+
+  const handleBookNow = (offerId: string) => {
+    router.push(`/booking?offer=${offerId}`)
+  }
+
+  const handleViewAll = () => {
+    router.push("/offers")
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between px-2">
@@ -61,6 +73,7 @@ export function BestOffers() {
         <Button
           variant="ghost"
           size="sm"
+          onClick={handleViewAll}
           className="text-purple-600 hover:text-purple-700 font-semibold bg-purple-50 hover:bg-purple-100 rounded-2xl px-4"
         >
           View All
@@ -141,9 +154,9 @@ export function BestOffers() {
                     </div>
                   </div>
 
-                  {/* Action buttons */}
                   <div className="flex gap-3">
                     <Button
+                      onClick={() => handleBookNow(offer.id)}
                       className={`flex-1 bg-gradient-to-r ${offer.gradient} hover:opacity-90 text-white border-0 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all duration-300 group-hover:scale-105`}
                     >
                       Book Now
