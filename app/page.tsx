@@ -6,6 +6,7 @@ import { SpecialOffers } from "@/components/special-offers"
 import { BestOffers } from "@/components/best-offers"
 import { NeedHelp } from "@/components/need-help"
 import { BottomNavigation } from "@/components/bottom-navigation"
+import { SearchBar } from "@/components/search-bar"
 
 export default function HomePage() {
   return (
@@ -15,6 +16,7 @@ export default function HomePage() {
         <div className="px-4 py-6 space-y-6">
           <LocationPrivacyNotice />
           <LocationSelector />
+          <SearchBar placeholder="Search tests, packages, labs..." />
           <ServiceCards />
           <NeedHelp />
           <SpecialOffers />

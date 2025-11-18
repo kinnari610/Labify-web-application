@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -17,26 +17,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { Search, ShoppingCart, Menu, User, MapPin, LogOut, Settings, Heart, Clock, Bell } from "lucide-react"
+import { Search, ShoppingCart, Menu, User, MapPin, LogOut, Settings, Heart, Clock, Bell } from 'lucide-react'
 import { useAuth } from "@/hooks/use-auth"
 import { useCart } from "@/hooks/use-cart"
 import { useLocationService } from "@/hooks/use-location-service"
 
 export function Header() {
-  const [searchQuery, setSearchQuery] = useState("")
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const router = useRouter()
   const { user, profile, signOut, isSigningOut } = useAuth()
   const { totalItems } = useCart()
   const { location, requestLocation, isLoading: locationLoading } = useLocationService()
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (searchQuery.trim()) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
-      setSearchQuery("")
-    }
-  }
 
   const handleLocationClick = () => {
     if (!location) {
@@ -74,22 +64,6 @@ export function Header() {
           </div>
           <span className="font-bold text-xl">Labify</span>
         </Link>
-
-        {/* Search Bar - Desktop */}
-        <div className="hidden md:flex flex-1 max-w-md mx-8">
-          <form onSubmit={handleSearch} className="flex w-full">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                type="search"
-                placeholder="Search tests, packages, labs..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4"
-              />
-            </div>
-          </form>
-        </div>
 
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center space-x-4">
@@ -225,20 +199,6 @@ export function Header() {
               </SheetHeader>
 
               <div className="mt-6 space-y-4">
-                {/* Search */}
-                <form onSubmit={handleSearch} className="flex">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                    <Input
-                      type="search"
-                      placeholder="Search tests, packages..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </form>
-
                 {/* Location */}
                 <Button
                   variant="outline"
