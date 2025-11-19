@@ -69,13 +69,22 @@ export default function BookingPage() {
 
     const fetchPackage = async (id: string) => {
       try {
-        // Check if id is a valid UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
         
-        let query = supabase.from("test_packages").select("id, name, price, description")
+        let dbPackage = null
         
         if (isUUID) {
-          query = query.eq("id", id)
+          // If it's a UUID, fetch directly from database
+          const { data, error } = await supabase
+            .from("test_packages")
+            .select("id, name, price, description")
+            .eq("id", id)
+            .maybeSingle()
+          
+          if (error) {
+            console.warn("[v0] Error fetching UUID package:", error.message)
+          }
+          dbPackage = data
         } else {
           // If not UUID, try to find by name based on our mappings
           let packageName = ""
@@ -83,9 +92,8 @@ export default function BookingPage() {
           // Check offersMapping
           if (offersMapping[id]) {
             packageName = offersMapping[id].name
-          } 
-          // Check special offers
-          else {
+          } else {
+            // Check special offers
             const specialOffer = offers.find(o => o.id === id)
             if (specialOffer) {
               // Map special offer IDs to DB package names
@@ -97,71 +105,69 @@ export default function BookingPage() {
           }
           
           if (packageName) {
-            query = query.ilike("name", packageName).limit(1)
-          } else {
-            console.warn("[v0] Could not map ID to package name:", id)
-            // Don't throw here, let it fall through to client-side fallback
+            const { data, error } = await supabase
+              .from("test_packages")
+              .select("id, name, price, description")
+              .ilike("name", `%${packageName}%`)
+              .limit(1)
+              .maybeSingle()
+            
+            if (error) {
+              console.warn("[v0] Error searching package by name:", error.message)
+            }
+            dbPackage = data
           }
         }
 
-        // Use maybeSingle() instead of single() to handle 0 or 1 results gracefully
-        const { data, error } = await query.maybeSingle()
-
-        if (error) throw error
-        
-        if (data) {
-            // If we found a package in DB, use it
-            // But if it was a special offer, we might want to override the price with the offer price
-            let finalPackage = data
-            
-            if (offerId) {
-              const specialOffer = offers.find(o => o.id === offerId)
-              if (specialOffer) {
-                finalPackage = {
-                  ...data,
-                  price: specialOffer.discountPrice,
-                  description: specialOffer.description
-                }
-              } else if (offersMapping[offerId]) {
-                 finalPackage = {
-                  ...data,
-                  price: offersMapping[offerId].price,
-                  description: offersMapping[offerId].description
-                }
+        // Use database package if found, otherwise use client-side fallback
+        if (dbPackage) {
+          let finalPackage = dbPackage
+          
+          // Apply special offer pricing if available
+          if (offerId) {
+            const specialOffer = offers.find(o => o.id === offerId)
+            if (specialOffer) {
+              finalPackage = {
+                ...dbPackage,
+                price: specialOffer.discountPrice,
+                description: specialOffer.description
+              }
+            } else if (offersMapping[offerId]) {
+              finalPackage = {
+                ...dbPackage,
+                price: offersMapping[offerId].price,
+                description: offersMapping[offerId].description
               }
             }
-            console.log("[v0] Package loaded successfully from DB:", finalPackage)
-            setSelectedPackage(finalPackage)
-            return
-        }
-        
-        console.warn("[v0] Package not found in DB, falling back to client data:", id)
-        throw new Error("Package not found in database")
-
-      } catch (error) {
-        console.error("[v0] Error fetching package:", error)
-        // Fallback to client-side data if DB fetch fails
-        if (offerId && offersMapping[offerId]) {
-           setSelectedPackage(offersMapping[offerId])
-        } else if (offerId) {
-           const specialOffer = offers.find(o => o.id === offerId)
-           if (specialOffer) {
-             setSelectedPackage({
-               id: specialOffer.id, // This will be "flash-sale" etc, not a UUID
-               name: specialOffer.title,
-               price: specialOffer.discountPrice,
-               description: specialOffer.description
-             })
-           }
-        } else if (packageId && offersMapping[packageId]) {
+          }
+          
+          setSelectedPackage(finalPackage)
+        } else {
+          // Fallback to client-side data
+          if (offerId && offersMapping[offerId]) {
+            setSelectedPackage(offersMapping[offerId])
+          } else if (offerId) {
+            const specialOffer = offers.find(o => o.id === offerId)
+            if (specialOffer) {
+              setSelectedPackage({
+                id: specialOffer.id,
+                name: specialOffer.title,
+                price: specialOffer.discountPrice,
+                description: specialOffer.description
+              })
+            }
+          } else if (packageId && offersMapping[packageId]) {
             setSelectedPackage(offersMapping[packageId])
+          }
         }
-        
-        toast({
-          title: "Notice",
-          description: "Using offline package details. Some features may be limited.",
-          variant: "default",
-        })
+      } catch (error) {
+        console.error("[v0] Unexpected error fetching package:", error)
+        // Still set client-side fallback on error
+        if (offerId && offersMapping[offerId]) {
+          setSelectedPackage(offersMapping[offerId])
+        } else if (packageId && offersMapping[packageId]) {
+          setSelectedPackage(offersMapping[packageId])
+        }
       }
     }
     
@@ -170,7 +176,7 @@ export default function BookingPage() {
     } else if (packageId) {
       fetchPackage(packageId)
     }
-  }, [user, packageId, offerId, router, toast])
+  }, [user, packageId, offerId, router])
 
   const handleBooking = async () => {
     if (!user || !selectedPackage) return
@@ -193,15 +199,14 @@ export default function BookingPage() {
       return
     }
 
-    // Check if we have a valid UUID for the package
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedPackage.id)
     if (!isUUID) {
-        toast({
-            title: "Booking Unavailable",
-            description: "This package is currently not available for online booking. Please try again later or contact support.",
-            variant: "destructive"
-        })
-        return
+      toast({
+        title: "Package Database Required",
+        description: "The package database needs to be set up. Please contact support or try again in a few moments.",
+        variant: "destructive"
+      })
+      return
     }
 
     setLoading(true)
