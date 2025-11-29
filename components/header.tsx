@@ -1,11 +1,8 @@
 "use client"
-
-import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from 'next/navigation'
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -17,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { Search, ShoppingCart, Menu, User, MapPin, LogOut, Settings, Heart, Clock, Bell } from 'lucide-react'
+import { ShoppingCart, Menu, User, MapPin, LogOut, Settings, Heart, Clock, Bell } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { useCart } from "@/hooks/use-cart"
 import { useLocationService } from "@/hooks/use-location-service"
@@ -57,12 +54,18 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between px-4">
-        {/* Logo */}
         <Link href="/" className="flex items-center space-x-2">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">L</span>
+          <div className="h-10 w-10 rounded-lg overflow-hidden">
+            <Image
+              src="/labify-logo.jpg"
+              alt="Labify"
+              width={40}
+              height={40}
+              className="h-full w-full object-cover"
+              priority
+            />
           </div>
-          <span className="font-bold text-xl">Labify</span>
+          <span className="font-bold text-xl hidden sm:inline">Labify</span>
         </Link>
 
         {/* Desktop Navigation */}
