@@ -21,11 +21,27 @@ export async function POST(req: Request) {
     const keyId = process.env.RAZORPAY_KEY_ID
     const keySecret = process.env.RAZORPAY_KEY_SECRET
 
-    // Demo mode: if keys are not set, return a mock order response
     if (!keyId || !keySecret) {
+      console.log("[v0] Razorpay keys not configured. Using demo mode.")
       return NextResponse.json({
         demo: true,
         message: "Razorpay keys missing, returning mock order.",
+        keyId: "rzp_test_demo_key",
+        order: {
+          id: `order_demo_${Date.now()}`,
+          amount,
+          currency,
+          receipt,
+          status: "created",
+        },
+      })
+    }
+
+    if (keyId.length === 0 || keySecret.length === 0) {
+      console.log("[v0] Razorpay keys are empty strings. Using demo mode.")
+      return NextResponse.json({
+        demo: true,
+        message: "Razorpay keys empty, returning mock order.",
         keyId: "rzp_test_demo_key",
         order: {
           id: `order_demo_${Date.now()}`,
@@ -55,6 +71,24 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const err = await res.text()
+      console.error("[v0] Razorpay API error:", res.status, err)
+
+      if (res.status === 401) {
+        console.log("[v0] Razorpay authentication failed. Check your keys in Vercel project settings.")
+        return NextResponse.json({
+          demo: true,
+          message: "Razorpay authentication failed. Using demo mode.",
+          keyId: "rzp_test_demo_key",
+          order: {
+            id: `order_demo_${Date.now()}`,
+            amount,
+            currency,
+            receipt,
+            status: "created",
+          },
+        })
+      }
+
       return NextResponse.json({ error: "Failed to create order", details: err }, { status: 502 })
     }
 
@@ -63,6 +97,7 @@ export async function POST(req: Request) {
     // Return only the necessary data; keyId is needed by Razorpay Checkout on the client
     return NextResponse.json({ keyId, order })
   } catch (error) {
+    console.error("[v0] Razorpay order creation error:", error)
     return NextResponse.json({ error: "Unexpected error", details: String(error) }, { status: 500 })
   }
 }
