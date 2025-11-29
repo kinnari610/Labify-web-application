@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Calendar, Clock, MapPin, Home } from 'lucide-react'
+import { Calendar, Clock, MapPin, Home } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
@@ -23,24 +23,25 @@ interface TestPackage {
 }
 
 const offersMapping: Record<string, TestPackage> = {
-  "pkg1": {
+  pkg1: {
     id: "pkg1",
     name: "Complete Health Checkup",
     price: 1999,
-    description: "Comprehensive health assessment including blood tests, urine analysis, and vital checks with 50+ parameters"
+    description:
+      "Comprehensive health assessment including blood tests, urine analysis, and vital checks with 50+ parameters",
   },
-  "pkg2": {
+  pkg2: {
     id: "pkg2",
     name: "Diabetes Care Package",
     price: 1299,
-    description: "Complete diabetes monitoring with HbA1c, fasting glucose, and comprehensive metabolic panel"
+    description: "Complete diabetes monitoring with HbA1c, fasting glucose, and comprehensive metabolic panel",
   },
-  "pkg3": {
+  pkg3: {
     id: "pkg3",
     name: "Heart Health Screening",
     price: 1599,
-    description: "Complete cardiac assessment including lipid profile, ECG, and cardiac risk markers"
-  }
+    description: "Complete cardiac assessment including lipid profile, ECG, and cardiac risk markers",
+  },
 }
 
 export default function BookingPage() {
@@ -70,9 +71,9 @@ export default function BookingPage() {
     const fetchPackage = async (id: string) => {
       try {
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-        
+
         let dbPackage = null
-        
+
         if (isUUID) {
           // If it's a UUID, fetch directly from database
           const { data, error } = await supabase
@@ -80,7 +81,7 @@ export default function BookingPage() {
             .select("id, name, price, description")
             .eq("id", id)
             .maybeSingle()
-          
+
           if (error) {
             console.warn("[v0] Error fetching UUID package:", error.message)
           }
@@ -88,13 +89,13 @@ export default function BookingPage() {
         } else {
           // If not UUID, try to find by name based on our mappings
           let packageName = ""
-          
+
           // Check offersMapping
           if (offersMapping[id]) {
             packageName = offersMapping[id].name
           } else {
             // Check special offers
-            const specialOffer = offers.find(o => o.id === id)
+            const specialOffer = offers.find((o) => o.id === id)
             if (specialOffer) {
               // Map special offer IDs to DB package names
               if (id === "flash-sale") packageName = "Blood Test Package"
@@ -103,7 +104,7 @@ export default function BookingPage() {
               else packageName = specialOffer.title
             }
           }
-          
+
           if (packageName) {
             const { data, error } = await supabase
               .from("test_packages")
@@ -111,7 +112,7 @@ export default function BookingPage() {
               .ilike("name", `%${packageName}%`)
               .limit(1)
               .maybeSingle()
-            
+
             if (error) {
               console.warn("[v0] Error searching package by name:", error.message)
             }
@@ -122,38 +123,38 @@ export default function BookingPage() {
         // Use database package if found, otherwise use client-side fallback
         if (dbPackage) {
           let finalPackage = dbPackage
-          
+
           // Apply special offer pricing if available
           if (offerId) {
-            const specialOffer = offers.find(o => o.id === offerId)
+            const specialOffer = offers.find((o) => o.id === offerId)
             if (specialOffer) {
               finalPackage = {
                 ...dbPackage,
                 price: specialOffer.discountPrice,
-                description: specialOffer.description
+                description: specialOffer.description,
               }
             } else if (offersMapping[offerId]) {
               finalPackage = {
                 ...dbPackage,
                 price: offersMapping[offerId].price,
-                description: offersMapping[offerId].description
+                description: offersMapping[offerId].description,
               }
             }
           }
-          
+
           setSelectedPackage(finalPackage)
         } else {
           // Fallback to client-side data
           if (offerId && offersMapping[offerId]) {
             setSelectedPackage(offersMapping[offerId])
           } else if (offerId) {
-            const specialOffer = offers.find(o => o.id === offerId)
+            const specialOffer = offers.find((o) => o.id === offerId)
             if (specialOffer) {
               setSelectedPackage({
                 id: specialOffer.id,
                 name: specialOffer.title,
                 price: specialOffer.discountPrice,
-                description: specialOffer.description
+                description: specialOffer.description,
               })
             }
           } else if (packageId && offersMapping[packageId]) {
@@ -170,7 +171,7 @@ export default function BookingPage() {
         }
       }
     }
-    
+
     if (offerId) {
       fetchPackage(offerId)
     } else if (packageId) {
@@ -204,7 +205,7 @@ export default function BookingPage() {
       toast({
         title: "Package Database Required",
         description: "The package database needs to be set up. Please contact support or try again in a few moments.",
-        variant: "destructive"
+        variant: "destructive",
       })
       return
     }
@@ -216,19 +217,29 @@ export default function BookingPage() {
       const appointmentData = {
         user_id: user.id,
         test_package_id: selectedPackage.id,
+        lab_id: "550e8400-e29b-41d4-a716-446655440000", // Use a default lab UUID or let user select
         appointment_date: selectedDate,
         appointment_time: selectedTime,
         service_type: bookingType,
-        phone,
-        home_address: bookingType === "home_service" ? address : null,
+        patient_phone: phone,
+        address: bookingType === "home_service" ? address : null,
         notes,
         total_amount: selectedPackage.price + (bookingType === "home_service" ? 150 : 0),
-        status: "scheduled",
       }
 
-      const { data, error } = await supabase.from("appointments").insert([appointmentData]).select().single()
+      const response = await fetch("/api/appointments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(appointmentData),
+      })
 
-      if (error) throw error
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || data.details || "Failed to book appointment")
+      }
 
       toast({
         title: "Appointment Booked!",
@@ -236,12 +247,12 @@ export default function BookingPage() {
       })
 
       // Redirect to payment
-      router.push(`/payment?appointment=${data.id}`)
+      router.push(`/payment?appointment=${data.appointment.id}`)
     } catch (error) {
       console.error("Booking error:", error)
       toast({
         title: "Booking Failed",
-        description: "Failed to book appointment. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to book appointment. Please try again.",
         variant: "destructive",
       })
     } finally {
