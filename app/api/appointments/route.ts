@@ -18,13 +18,11 @@ export async function POST(request: NextRequest) {
       lab_id,
       appointment_date,
       appointment_time,
-      patient_name,
-      patient_phone,
-      patient_age,
-      patient_gender,
-      address,
+      phone,
+      home_address,
       notes,
       total_amount,
+      service_type,
     } = body
 
     // Validate required fields
@@ -37,9 +35,9 @@ export async function POST(request: NextRequest) {
       .from("users")
       .select("id")
       .eq("id", user_id)
-      .single()
+      .maybeSingle()
 
-    if (userError || !userData) {
+    if (!userData) {
       return NextResponse.json({ error: "User not found. Please ensure you are logged in." }, { status: 404 })
     }
 
@@ -75,16 +73,12 @@ export async function POST(request: NextRequest) {
           lab_id,
           appointment_date,
           appointment_time,
-          patient_name: patient_name || "Patient",
-          patient_phone: patient_phone || "",
-          patient_age: patient_age || null,
-          patient_gender: patient_gender || "not_specified",
-          address: address || "",
+          phone: phone || "",
+          home_address: home_address || "",
           notes: notes || "",
           total_amount: total_amount || packageData.price,
-          status: "pending",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          status: "confirmed", // Changed from "pending" to "confirmed" to match database check constraint
+          service_type: (service_type || "Lab Visit").toLowerCase().replace(/ /g, "_"),
         },
       ])
       .select()

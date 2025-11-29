@@ -180,7 +180,15 @@ export default function BookingPage() {
   }, [user, packageId, offerId, router])
 
   const handleBooking = async () => {
-    if (!user || !selectedPackage) return
+    if (!user || !selectedPackage) {
+      toast({
+        title: "Not Logged In",
+        description: "Please log in to book an appointment.",
+        variant: "destructive",
+      })
+      router.push("/auth/login")
+      return
+    }
 
     if (!selectedDate || !selectedTime || !phone) {
       toast({
@@ -204,7 +212,7 @@ export default function BookingPage() {
     if (!isUUID) {
       toast({
         title: "Package Database Required",
-        description: "The package database needs to be set up. Please contact support or try again in a few moments.",
+        description: "The package database needs to be set up. Please contact support.",
         variant: "destructive",
       })
       return
@@ -213,16 +221,23 @@ export default function BookingPage() {
     setLoading(true)
 
     try {
-      // Create appointment
+      const { data: labs, error: labError } = await supabase.from("labs").select("id, name").limit(1)
+
+      if (labError || !labs || labs.length === 0) {
+        throw new Error("No labs available. Please try again later.")
+      }
+
+      const labId = labs[0].id
+
       const appointmentData = {
         user_id: user.id,
         test_package_id: selectedPackage.id,
-        lab_id: "550e8400-e29b-41d4-a716-446655440000", // Use a default lab UUID or let user select
+        lab_id: labId,
         appointment_date: selectedDate,
         appointment_time: selectedTime,
-        service_type: bookingType,
-        patient_phone: phone,
-        address: bookingType === "home_service" ? address : null,
+        service_type: bookingType === "home_service" ? "Home Service" : "Lab Visit",
+        phone: phone,
+        home_address: bookingType === "home_service" ? address : "",
         notes,
         total_amount: selectedPackage.price + (bookingType === "home_service" ? 150 : 0),
       }
@@ -246,7 +261,6 @@ export default function BookingPage() {
         description: "Your appointment has been scheduled successfully.",
       })
 
-      // Redirect to payment
       router.push(`/payment?appointment=${data.appointment.id}`)
     } catch (error) {
       console.error("Booking error:", error)
